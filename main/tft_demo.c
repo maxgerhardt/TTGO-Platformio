@@ -15,7 +15,8 @@
 #include "freertos/task.h"
 
 #include "tft.h"
-#include "spiffs_vfs.h"
+#include "esp_spiffs.h"
+#include "esp_log.h"
 
 #ifdef CONFIG_EXAMPLE_USE_WIFI
 
@@ -42,6 +43,10 @@ static char tmp_buff[64];
 static time_t time_now, time_last = 0;
 // static const char *file_fonts[3] = {"/spiffs/fonts/DotMatrix_M.fon", "/spiffs/fonts/Ubuntu.fon", "/spiffs/fonts/Grotesk24x48.fon"};
 static const char *file_fonts[3] = {"/spiffs/fonts/DotMatrix_M.fon", "/spiffs/fonts/Ubuntu.fon", "/spiffs/fonts/Orbitron-Medium.fon"};
+
+static bool spiffs_is_mounted = false;
+static const char *TAG = "tft-demo";
+#define SPIFFS_BASE_PATH "/spiffs"
 
 #define GDEMO_TIME 1000
 #define GDEMO_INFO_TIME 5000
@@ -1419,14 +1424,39 @@ void app_main()
 	TFT_print("Initializing SPIFFS...", CENTER, CENTER);
     // ==== Initialize the file system ====
     printf("\r\n\n");
-	vfs_spiffs_register();
+
+    esp_vfs_spiffs_conf_t conf = {
+      .base_path = "/spiffs",
+      .partition_label = NULL,
+      .max_files = 20,
+      .format_if_mount_failed = false
+    };
+    ret = esp_vfs_spiffs_register(&conf);
+	spiffs_is_mounted = ret == ESP_OK;
+
     if (!spiffs_is_mounted) {
     	tft_fg = TFT_RED;
     	TFT_print("SPIFFS not mounted !", CENTER, LASTY+TFT_getfontheight()+2);
+        if (ret == ESP_FAIL) {
+            printf("Failed to mount or format filesystem\n");
+        } else if (ret == ESP_ERR_NOT_FOUND) {
+            printf("Failed to find SPIFFS partition\n");
+        } else {
+            printf("Failed to initialize SPIFFS (%s)\n", esp_err_to_name(ret));
+        }
     }
     else {
     	tft_fg = TFT_GREEN;
     	TFT_print("SPIFFS Mounted.", CENTER, LASTY+TFT_getfontheight()+2);
+		//print some additional info.
+		printf("SPIFFS mounted successfully!\n");
+		size_t total = 0, used = 0;
+		ret = esp_spiffs_info(conf.partition_label, &total, &used);
+		if (ret != ESP_OK) {
+			printf("Failed to get SPIFFS partition information (%s)\n", esp_err_to_name(ret));
+		} else {
+			printf("Partition size: total: %d bytes, used: %d bytes\n", total, used);
+		}
     }
 
 	Wait(-2000);
